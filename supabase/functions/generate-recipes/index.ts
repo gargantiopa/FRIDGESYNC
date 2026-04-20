@@ -1,6 +1,8 @@
 // Edge function: generate eco-friendly recipes using Google Gemini AI
 // Environment variables required:
 //   GEMINI_API_KEY  - Google AI Studio API key
+import { GeminiRequestError, generateGeminiText } from "../_shared/gemini.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -31,9 +33,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not configured");
-
     const timeLabel = time === "any" ? "any duration" : `under ${time} minutes`;
     const goalLabel =
       goal === "zero-waste"
@@ -42,68 +41,55 @@ Deno.serve(async (req) => {
           ? "minimize prep effort and cooking complexity"
           : "maximize nutritional value and balance";
 
-    const prompt = `You are an eco-conscious chef AI for the EcoSync app (year 2026). Generate creative recipes that USE ONLY the ingredients the user has in their fridge (plus pantry basics like salt, pepper, oil, water).
+    const prompt = `You are an eco-conscious chef AI for the EcoSync app (year 2026). Generate creative recipes that use only the ingredients the user has in their fridge, plus pantry basics like salt, pepper, oil, and water.
 
 My fridge contains: ${ingredients.join(", ")}.
 Cook time: ${timeLabel}.
 Goal: ${goalLabel}.
 
-Generate exactly 3 recipes. For each: pick a single food emoji, a short title, realistic cook time in minutes, sustainability rating (High/Medium/Low based on how well it reduces waste), the % of recipe ingredients I have (0-100), 3-6 concise step-by-step instructions, and the list of fridge ingredients it uses.
+Generate exactly 3 recipes.
+Every recipe must stay realistic and must not invent extra non-pantry ingredients.
 
-Return ONLY valid JSON, no markdown, no explanation:
-{"recipes": [
-  {
-    "title": "Recipe Title",
-    "emoji": "🍳",
-    "time": 15,
-    "sustainability": "High",
-    "haveIngredients": 90,
-    "steps": ["Step 1", "Step 2", "Step 3"],
-    "uses": ["Ingredient1", "Ingredient2"]
-  }
-]}`;
+Return only this exact plain-text structure:
+RECIPE_START
+Title: Quick Spinach Eggs
+Emoji: 🍳
+Time: 12
+Sustainability: High
+HaveIngredients: 100
+Uses: Eggs x6 | Spinach | Cheese
+Steps:
+- Beat the eggs.
+- Cook the spinach briefly.
+- Add the eggs and cheese and finish until set.
+RECIPE_END`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
+    const raw = await generateGeminiText({
+      contents: [
+        {
+          parts: [
             {
-              parts: [
-                {
-                  text: prompt,
-                },
-              ],
+              text: prompt,
             },
           ],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
-        }),
-      }
-    );
+        },
+      ],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2048,
+      },
+    });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error("Gemini error:", response.status, errText);
-      throw new Error(`Gemini returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    const cleaned = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-
-    const recipes = (parsed.recipes || []).map((r: Record<string, unknown>, i: number) => ({
+    const recipes = parseRecipes(raw).map((r, i) => ({
       id: crypto.randomUUID(),
-      title: r.title as string,
-      emoji: r.emoji as string,
+      title: r.title,
+      emoji: r.emoji,
       gradient: GRADIENTS[i % GRADIENTS.length],
-      time: r.time as number,
-      haveIngredients: r.haveIngredients as number,
-      sustainability: r.sustainability as "High" | "Medium" | "Low",
-      steps: (r.steps as string[]) || [],
-      uses: (r.uses as string[]) || [],
+      time: r.time,
+      haveIngredients: r.haveIngredients,
+      sustainability: r.sustainability,
+      steps: r.steps,
+      uses: r.uses,
     }));
 
     return new Response(JSON.stringify({ recipes }), {
@@ -112,8 +98,101 @@ Return ONLY valid JSON, no markdown, no explanation:
   } catch (e) {
     console.error("generate-recipes error:", e);
     return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500,
+      status: e instanceof GeminiRequestError ? e.status : 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
+
+type ParsedRecipe = {
+  title: string;
+  emoji: string;
+  time: number;
+  haveIngredients: number;
+  sustainability: "High" | "Medium" | "Low";
+  steps: string[];
+  uses: string[];
+};
+
+function parseRecipes(raw: string): ParsedRecipe[] {
+  const blocks = [...raw.matchAll(/RECIPE_START\s*([\s\S]*?)\s*RECIPE_END/gi)].map((match) => match[1]);
+  const sourceBlocks = blocks.length > 0 ? blocks : [raw];
+
+  const recipes = sourceBlocks
+    .map((block) => parseRecipeBlock(block))
+    .filter((recipe): recipe is ParsedRecipe => recipe !== null)
+    .slice(0, 3);
+
+  if (recipes.length === 0) {
+    throw new Error("Gemini returned no parseable recipes");
+  }
+
+  return recipes;
+}
+
+function parseRecipeBlock(block: string): ParsedRecipe | null {
+  const title = matchField(block, "Title");
+  const emoji = matchField(block, "Emoji") || "🍽️";
+  const sustainabilityRaw = matchField(block, "Sustainability");
+  const sustainability = normalizeSustainability(sustainabilityRaw);
+  const time = toBoundedNumber(matchField(block, "Time"), 5, 180, 15);
+  const haveIngredients = toBoundedNumber(matchField(block, "HaveIngredients"), 0, 100, 80);
+  const uses = splitPipeList(matchField(block, "Uses"));
+  const steps = parseSteps(block);
+
+  if (!title || !sustainability || steps.length === 0) {
+    return null;
+  }
+
+  return {
+    title,
+    emoji,
+    time,
+    haveIngredients,
+    sustainability,
+    steps,
+    uses,
+  };
+}
+
+function matchField(block: string, label: string) {
+  const match = block.match(new RegExp(`^${label}:\\s*(.+)$`, "im"));
+  return match?.[1]?.trim() ?? "";
+}
+
+function normalizeSustainability(value: string): "High" | "Medium" | "Low" | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "high") return "High";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "low") return "Low";
+  return null;
+}
+
+function toBoundedNumber(value: string, min: number, max: number, fallback: number) {
+  const match = value.match(/\d+/);
+  if (!match) return fallback;
+
+  const parsed = Number(match[0]);
+  if (Number.isNaN(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function splitPipeList(value: string) {
+  return value
+    .split("|")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseSteps(block: string) {
+  const stepsMatch = block.match(/Steps:\s*([\s\S]*)$/i);
+  const stepsSource = stepsMatch?.[1] ?? block;
+
+  return stepsSource
+    .split("\n")
+    .map((line) => line.trim())
+    .map((line) => line.replace(/^[-*•\d.)\s]+/, "").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^(Title|Emoji|Time|Sustainability|HaveIngredients|Uses):/i.test(line))
+    .slice(0, 6);
+}

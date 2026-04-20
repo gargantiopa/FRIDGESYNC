@@ -3,6 +3,7 @@ import { Camera, Plus, Refrigerator } from "lucide-react";
 import { IngredientPill } from "./IngredientPill";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getFunctionErrorMessage } from "@/lib/function-errors";
 
 interface SmartFridgeProps {
   ingredients: string[];
@@ -29,10 +30,42 @@ export const SmartFridge = ({ ingredients, onAdd, onRemove }: SmartFridgeProps) 
 
   const fileToDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      image.onload = () => {
+        const maxSide = 1600;
+        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Canvas is not available for image processing"));
+          return;
+        }
+
+        ctx.drawImage(image, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        URL.revokeObjectURL(objectUrl);
+        resolve(dataUrl);
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      };
+
+      image.src = objectUrl;
     });
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -41,11 +74,14 @@ export const SmartFridge = ({ ingredients, onAdd, onRemove }: SmartFridgeProps) 
     if (!file) return;
 
     setScanning(true);
+    let response: Response | undefined;
     try {
       const dataUrl = await fileToDataUrl(file);
-      const { data, error } = await supabase.functions.invoke("scan-fridge", {
+      const result = await supabase.functions.invoke("scan-fridge", {
         body: { image: dataUrl },
       });
+      const { data, error } = result;
+      response = result.response;
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
@@ -70,7 +106,7 @@ export const SmartFridge = ({ ingredients, onAdd, onRemove }: SmartFridgeProps) 
       );
     } catch (err) {
       console.error(err);
-      toast.error(err instanceof Error ? err.message : "Failed to scan image");
+      toast.error(await getFunctionErrorMessage(err, response, "Failed to scan image"));
     } finally {
       setScanning(false);
     }

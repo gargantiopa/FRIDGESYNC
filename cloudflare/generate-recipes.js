@@ -58,32 +58,31 @@ export default {
             ? "minimize prep effort and cooking complexity"
             : "maximize nutritional value and balance";
 
-      const prompt = `You are an eco-conscious chef AI for the EcoSync app (year 2026). Generate creative recipes that USE ONLY the ingredients the user has in their fridge (plus pantry basics like salt, pepper, oil, water).
+      const prompt = `You are an eco-conscious chef AI for the EcoSync app (year 2026). Generate creative recipes that use only the ingredients the user has in their fridge, plus pantry basics like salt, pepper, oil, and water.
 
 My fridge contains: ${ingredients.join(", ")}.
 Cook time: ${timeLabel}.
 Goal: ${goalLabel}.
 
-Generate exactly 3 recipes. For each: pick a single food emoji, a short title, realistic cook time in minutes, sustainability rating (High/Medium/Low based on how well it reduces waste), the % of recipe ingredients I have (0-100), 3-6 concise step-by-step instructions, and the list of fridge ingredients it uses.
+Generate exactly 3 recipes. For each recipe include:
+- title: short title
+- emoji: a single food emoji
+- time: realistic cook time in minutes
+- sustainability: High, Medium, or Low
+- haveIngredients: percentage from 0 to 100
+- steps: 3 to 6 concise steps
+- uses: the fridge ingredients used in the recipe
 
-Return ONLY valid JSON, no markdown, no explanation:
-{"recipes": [
-  {
-    "title": "Recipe Title",
-    "emoji": "🍳",
-    "time": 15,
-    "sustainability": "High",
-    "haveIngredients": 90,
-    "steps": ["Step 1", "Step 2", "Step 3"],
-    "uses": ["Ingredient1", "Ingredient2"]
-  }
-]}`;
+Every recipe must stay realistic and must not invent extra non-pantry ingredients.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY,
+          },
           body: JSON.stringify({
             contents: [
               {
@@ -94,7 +93,50 @@ Return ONLY valid JSON, no markdown, no explanation:
                 ],
               },
             ],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 2048,
+              response_mime_type: "application/json",
+              response_schema: {
+                type: "OBJECT",
+                properties: {
+                  recipes: {
+                    type: "ARRAY",
+                    items: {
+                      type: "OBJECT",
+                      properties: {
+                        title: { type: "STRING" },
+                        emoji: { type: "STRING" },
+                        time: { type: "NUMBER" },
+                        sustainability: {
+                          type: "STRING",
+                          enum: ["High", "Medium", "Low"],
+                        },
+                        haveIngredients: { type: "NUMBER" },
+                        steps: {
+                          type: "ARRAY",
+                          items: { type: "STRING" },
+                        },
+                        uses: {
+                          type: "ARRAY",
+                          items: { type: "STRING" },
+                        },
+                      },
+                      required: [
+                        "title",
+                        "emoji",
+                        "time",
+                        "sustainability",
+                        "haveIngredients",
+                        "steps",
+                        "uses",
+                      ],
+                    },
+                  },
+                },
+                required: ["recipes"],
+              },
+            },
           }),
         }
       );
@@ -106,9 +148,8 @@ Return ONLY valid JSON, no markdown, no explanation:
       }
 
       const data = await response.json();
-      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const raw = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() || "";
+      const parsed = JSON.parse(raw);
 
       const recipes = (parsed.recipes || []).map((r, i) => ({
         id: crypto.randomUUID(),

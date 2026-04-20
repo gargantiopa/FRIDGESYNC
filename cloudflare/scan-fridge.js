@@ -46,17 +46,20 @@ export default {
       const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY,
+          },
           body: JSON.stringify({
             contents: [
               {
                 parts: [
                   {
                     text: [
-                      "You are an expert food vision system for a smart-fridge app. Carefully analyze the photo and identify EVERY distinct edible food item or ingredient you can see, including items that are partially visible, behind glass, in containers, jars, bottles, bags, or wrapped in packaging.",
+                      "You are an expert food vision system for a smart-fridge app. Carefully analyze the photo and identify every distinct edible food item or ingredient you can see, including items that are partially visible, behind glass, in containers, jars, bottles, bags, or wrapped in packaging.",
                       "",
                       "Rules:",
                       "- Inspect the image methodically from top shelf to bottom shelf, then drawers, then every door compartment.",
@@ -73,8 +76,6 @@ export default {
                       "- Skip non-food objects, brand-only names without a recognizable food, and uncertain guesses.",
                       "- If the photo is clearly not a fridge or contains no visible food, return an empty list.",
                       "",
-                      "Return ONLY valid JSON, no markdown, no explanation:",
-                      '{"ingredients": ["item1", "item2"]}',
                     ].join("\n"),
                   },
                   {
@@ -83,7 +84,21 @@ export default {
                 ],
               },
             ],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 1024,
+              response_mime_type: "application/json",
+              response_schema: {
+                type: "OBJECT",
+                properties: {
+                  ingredients: {
+                    type: "ARRAY",
+                    items: { type: "STRING" },
+                  },
+                },
+                required: ["ingredients"],
+              },
+            },
           }),
         }
       );
@@ -95,9 +110,8 @@ export default {
       }
 
       const data = await response.json();
-      const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(cleaned);
+      const raw = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim() || "";
+      const parsed = JSON.parse(raw);
 
       const ingredients = (parsed.ingredients || [])
         .filter((s) => typeof s === "string" && s.trim().length > 0)

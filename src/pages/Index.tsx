@@ -6,6 +6,7 @@ import { RecipeCard, Recipe } from "@/components/RecipeCard";
 import { RecipeModal } from "@/components/RecipeModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getFunctionErrorMessage } from "@/lib/function-errors";
 
 const Index = () => {
   const [ingredients, setIngredients] = useState<string[]>([
@@ -39,17 +40,20 @@ const Index = () => {
     }
     setGenerating(true);
     setRecipes([]);
+    let response: Response | undefined;
     try {
-      const { data, error } = await supabase.functions.invoke("generate-recipes", {
+      const result = await supabase.functions.invoke("generate-recipes", {
         body: { ingredients, time, goal },
       });
+      const { data, error } = result;
+      response = result.response;
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       setRecipes(data.recipes || []);
       if (!data.recipes?.length) toast.error("No recipes returned. Try again.");
     } catch (e) {
       console.error(e);
-      const msg = e instanceof Error ? e.message : "Failed to generate recipes";
+      const msg = await getFunctionErrorMessage(e, response, "Failed to generate recipes");
       toast.error(msg);
     } finally {
       setGenerating(false);

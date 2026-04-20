@@ -6,4 +6,4 @@ directory = "./dist"
 
 [vars]
 VITE_SUPABASE_URL = "https://oiqrwqvuspsepioaoysi.supabase.co"
-VITE_SUPABASE_ANON_KEY = "sb_publishable_4EwpY6qi4A9QPmup3mO-Jg_yCH3gRyO"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_4EwpY6qi4A9QPmup3mO-Jg_yCH3gRyO"
