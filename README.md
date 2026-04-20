@@ -37,7 +37,9 @@ This project scans a fridge photo, detects ingredients using Google Gemini AI, a
 4. Deploy workers: `npm run deploy:cloudflare`
 5. Deploy frontend to Cloudflare Pages:
    - Connect your GitHub repo to Cloudflare Pages
-   - Set build command: `npm run build`
+   - Set build command: `bun run build`
+   - Set build output directory: `dist`
+   - Set deploy command: `npx wrangler pages deploy dist` (or leave blank for auto-detection)
    - Set build output directory: `dist`
    - Set environment variables in Pages settings
 

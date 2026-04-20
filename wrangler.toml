@@ -1,0 +1,9 @@
+name = "fridge-sync-frontend"
+compatibility_date = "2024-01-01"
+
+[build]
+command = "bun run build"
+cwd = "."
+
+[build.upload]
+format = "service-worker"
