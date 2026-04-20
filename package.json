@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy:supabase": "supabase functions deploy --project-id kbsjlqpttzwezbzhfarc",
+    "deploy:supabase": "supabase functions deploy --project-id oiqrwqvuspsepioaoysi",
     "deploy:cloudflare": "cd cloudflare && wrangler deploy"
   },
   "dependencies": {

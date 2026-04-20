@@ -23,9 +23,9 @@ This project scans a fridge photo, detects ingredients using Google Gemini AI, a
 2. Obtain a Google Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
 
 ### Option 1: Supabase (Recommended)
-1. Install Supabase CLI: `npm install -g supabase`
-2. Login: `supabase login`
-3. Link project: `supabase link --project-ref kbsjlqpttzwezbzhfarc`
+1. Install Supabase CLI: `brew install supabase/tap/supabase`
+2. Login: `supabase login` (opens browser for authentication)
+3. Link project: `supabase link --project-ref oiqrwqvuspsepioaoysi`
 4. Set secret: `supabase secrets set GEMINI_API_KEY=your_api_key`
 5. Deploy functions: `npm run deploy:supabase`
 6. Deploy frontend to Vercel/Netlify or Supabase hosting.
