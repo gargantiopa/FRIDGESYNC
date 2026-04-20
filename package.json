@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy:supabase": "supabase functions deploy --project-id kbsjlqpttzwezbzhfarc",
+    "deploy:cloudflare": "cd cloudflare && wrangler deploy"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
