@@ -7,7 +7,7 @@ This project scans a fridge photo, detects ingredients using Google Gemini AI, a
 1. Get Google AI Studio API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 2. Add the API key to Supabase Secrets:
    - Go to Supabase Dashboard → Project Settings → Edge Functions → Secrets
-   - Add: `GEMINI_API_KEY = AIzaSyAJa0e8-SeH0cm99E7xWgOjjcvJOvRfLes`
+   - Add: `GEMINI_API_KEY = (get from aistudio.google.com)`
 
 ## Where to plug in your data
 
